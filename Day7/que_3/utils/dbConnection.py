@@ -6,7 +6,7 @@ def getBDConnection():
         port=3306,
         user="root",
         password="root",
-        database="smart_home",
+        database="smart_home_db",
         use_pure=True
     )
     return connection
