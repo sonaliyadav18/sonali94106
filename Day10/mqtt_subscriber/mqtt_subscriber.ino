@@ -1,77 +1,56 @@
-#include <WiFi.h>
-#include <PubSubClient.h>
+#include<WiFi.h>
+#include<ArduinoMqttClient.h>
 
-const char* ssid = "SUNBEAM";
-const char* password = "1234567890";
+const char *ssid = "SUNBEAM";
+const char *password = "1234567890";
 
-const char* mqtt_server = "test.mosquitto.org";
+const char *host = "test.mosquitto.org";
+unsigned int port = 1883;
 
-const char* led_topic = "home/led";
+WiFiClient wifiClient;
+MqttClient subscriber(wifiClient);
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(115200);
 
-const int ledPin = 2;   
+  pinMode(2, OUTPUT);
 
-void setup_wifi() {
-  Serial.print("Connecting to WiFi");
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  Serial.print("Connecting to WiFi ");
+  while(WiFi.status() != WL_CONNECTED){
     delay(500);
     Serial.print(".");
   }
-
-  Serial.println("\nWiFi connected");
+  Serial.println("Connected to WiFi");
+  Serial.print("IP Address : ");
   Serial.println(WiFi.localIP());
-}
 
-void callback(char* topic, byte* message, unsigned int length) {
-  Serial.print("Message arrived: ");
-
-  String msg = "";
-  for (int i = 0; i < length; i++) {
-    msg += (char)message[i];
+  if(!subscriber.connect(host, port)){
+    while(1);
   }
-
-  Serial.println(msg);
-
-  if (msg == "ON") {
-    digitalWrite(ledPin, HIGH);
-    Serial.println("LED ON");
-  }
-  else if (msg == "OFF") {
-    digitalWrite(ledPin, LOW);
-    Serial.println("LED OFF");
-  }
-}
-
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Connecting to MQTT...");
-    if (client.connect("ESP32_LED_Subscriber")) {
-      Serial.println("connected");
-      client.subscribe(led_topic);
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      delay(2000);
-    }
-  }
-}
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(ledPin, OUTPUT);
-
-  setup_wifi();
-  client.setServer(mqtt_server, 1883);
-  client.setCallback(callback);
+  Serial.println("Subscriber is connected to broker");
+  subscriber.subscribe("room/light");
+  Serial.println("Subscribed to topic : room/light");
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
+  // put your main code here, to run repeatedly:
+  int len = subscriber.parseMessage();
+  if(len){
+    char str[len];
+    for(int i = 0 ; i < len ; i++)
+      str[i] = subscriber.read();
+
+    if(strncmp(str, "ON", 2) == 0){
+      digitalWrite(2, HIGH);
+      Serial.println("LED is truned ON");
+    }
+    else if(strncmp(str, "OFF", 3) == 0){
+      digitalWrite(2, LOW);
+      Serial.println("LED is truned OFF");
+    }
   }
-  client.loop();
 }

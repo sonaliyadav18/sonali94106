@@ -1,91 +1,80 @@
 #include <WiFi.h>
-#include <PubSubClient.h>
+#include <ArduinoMqttClient.h>
 #include <DHT.h>
 
-/* WiFi Credentials */
-const char* ssid = "realme";
-const char* password = "87654321";
+const char *ssid = "SUNBEAM";
+const char *password = "1234567890";
 
-/* MQTT Broker Details */
-const char* mqtt_server = "172.18.3.12";
-const int mqtt_port = 1883;
+const char *broker = "172.18.4.146";
+int port = 1883;
 
-/* DHT Sensor Configuration */
-#define DHTPIN 4
-#define DHTTYPE DHT11
+#define DHT_PIN 4
+#define DHT_TYPE DHT11
 
-WiFiClient espClient;
-PubSubClient client(espClient);
-DHT dht(DHTPIN, DHTTYPE);
+DHT dht(DHT_PIN, DHT_TYPE);
 
-/* Connect to WiFi */
-void setup_wifi() {
-  Serial.println("Connecting to WiFi...");
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(500);
-  }
-
-  Serial.println("\nWiFi connected");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
-}
-
-/* Connect to MQTT Broker */
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Connecting to MQTT...");
-    if (client.connect("ESP32_Publisher")) {
-      Serial.println("Connected to MQTT Broker");
-    } else {
-      Serial.print("Failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" retrying...");
-      delay(2000);
-    }
-  }
-}
+WiFiClient wifiClient;
+MqttClient mqttClient(wifiClient);
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  setup_wifi();
-  client.setServer(mqtt_server, mqtt_port);
   dht.begin();
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Connected");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  Serial.print("Connecting to MQTT broker...");
+  if (!mqttClient.connect(broker, port)) {
+    Serial.println(" Failed!");
+  } else {
+    Serial.println(" Connected!");
+  }
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-
-  client.loop();
-
-  float humidity = dht.readHumidity();
   float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
 
-  if (isnan(humidity) || isnan(temperature)) {
-    Serial.println("Failed to read from DHT sensor");
+  if (isnan(temperature) || isnan(humidity)) {
+    Serial.println(" Failed to read from DHT sensor!");
+    delay(2000);
     return;
   }
 
+  if (!mqttClient.connected()) {
+    Serial.println("Reconnecting to MQTT...");
+    mqttClient.connect(broker, port);
+  }
+
+  mqttClient.beginMessage("reading/temp");
+  mqttClient.print(temperature);
+  mqttClient.endMessage();
+
+  mqttClient.beginMessage("reading/hum");
+  mqttClient.print(humidity);
+  mqttClient.endMessage();
+
+  Serial.println(" Data Published to MQTT");
   Serial.print("Temperature: ");
   Serial.print(temperature);
-  Serial.print(" °C | Humidity: ");
+  Serial.println(" °C");
+
+  Serial.print("Humidity: ");
   Serial.print(humidity);
   Serial.println(" %");
-
-  char tempString[10];
-  char humString[10];
-
-  dtostrf(temperature, 4, 2, tempString);
-  dtostrf(humidity, 4, 2, humString);
-
-  client.publish("sensor/temperature", tempString);
-  client.publish("sensor/humidity", humString);
+  Serial.println("------------------------");
 
   delay(5000);
 }
